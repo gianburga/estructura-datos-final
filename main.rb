@@ -33,7 +33,7 @@ def create_guia_despacho(numero_guia, cliente, zona, tiempo_estimado, fecha_venc
 		errors.push("La zona " + zona + " es inválida. (N, S)")
 	end
 
-	if !is_number(tiempo_estimado.to_i)
+	if !is_number(tiempo_estimado.to_f)
 		errors.push("El tiempo estimado tiene que ser numerico.")
 	end
 
@@ -59,10 +59,19 @@ def create_guia_despacho(numero_guia, cliente, zona, tiempo_estimado, fecha_venc
 		numero_guia,
 		cliente,
 		zona,
-		tiempo_estimado.to_i,
+		tiempo_estimado.to_f,
 		_fecha_vencimiento,
-		prioridad.to_i
+		prioridad.to_i,
+		ordering_column([_fecha_vencimiento, prioridad, tiempo_estimado])
 	]
+end
+
+def ordering_column(values)
+	column_value = values[0]
+	for i in 1..values.size - 1
+		column_value += values[i]
+	end
+	return column_value
 end
 
 def input(message)
@@ -153,20 +162,20 @@ def get_value(id_row, data)
 	end
 end
 
-def print_row(row_data)
-	for i in 0..row_data.size - 1
+def print_row(row_data, limit)
+	for i in 0..limit - 1
 		value = get_value(i, row_data[i])
 		printf "%-18s", value
-		if i != row_data.size - 1
+		if i != limit - 1
 			print ' | '
 		end
 	end
 	puts
 end
 
-def print_rows(rows)
+def print_rows(rows, limit)
 	for j in 0..rows.size - 1
-		print_row(rows[j])
+		print_row(rows[j], limit)
 	end
 end
 
@@ -178,11 +187,11 @@ def print_table(headers, data, data_split)
 		for split in 0..data_split.size - 1
 			puts data_split[split]
 			puts print_line(19)
-			print_rows(data[split])
+			print_rows(data[split], headers.size)
 			puts print_line(19)
 		end
 	else
-		print_rows(data)
+		print_rows(data, headers.size)
 		puts print_line(19)
 	end
 	puts 'Mostrando ' + data.size.to_s + '/' + $planilla.size.to_s + ' resultados'
@@ -199,6 +208,7 @@ end
 def initialize_data()
 	guia9 = create_guia_despacho('T001-00138', '12123455', 'S', '2', '2017-05-31', '3')
 	guia1 = create_guia_despacho('T001-00003', '12345678', 'N', '1', '2017-03-06', '3')
+	guia14 = create_guia_despacho('T001-00003', '12345678', 'N', '0.5', '2017-03-06', '3')
 	guia2 = create_guia_despacho('T001-00006', '31231231', 'S', '1', '2017-03-06', '2')
 	guia3 = create_guia_despacho('T001-00013', '14122424', 'S', '3', '2017-03-07', '1')
 	guia4 = create_guia_despacho('T001-00020', '34343434', 'S', '1', '2017-03-08', '3')
@@ -213,7 +223,7 @@ def initialize_data()
 
 	add_bulk([
 		guia9, guia1, guia2, guia3, guia4, guia5, guia6, guia7, guia8,
-		guia10, guia11, guia12, guia13
+		guia10, guia11, guia12, guia13, guia14
 	])
 end
 
@@ -287,11 +297,29 @@ def ordenar_data(data, columns)
 	return data_ordered
 end
 
+def export_csv(file_name, headers, data)
+	require "csv"
+	CSV.open(file_name + ".csv", "wb") do |csv|
+		csv << headers
+		for i in 0..data.size - 1
+			csv << data[i]
+		end
+	end
+end
+
+def export_csv_to_pdf(file_name)
+	require "prawn"
+	Prawn::Document.generate(file_name + ".pdf") do
+	  text $planilla
+	end
+end
+
 def print_menu_items()
 	puts '1. Mostrar guias'
 	puts '2. Ingresar guia de despacho'
 	puts '3. Buscar guia'
 	puts '4. Operaciones de despacho'
+	puts '5. Exportar a excel'
 	puts '*. Salir'
 end
 
@@ -344,15 +372,22 @@ def show_menu()
 			sur = buscar_guia_despacho('S', 2)
 			headers = ['Despachos para hoy', 'Despachos mañana', 'Despachos pendientes']
 
-			results_norte = ordenar_data(norte, [4, 5, 3])
+			results_norte = ordering(norte, 6)
 			calculo_norte = calculo_horas(results_norte)
 			puts "Guias despacho - Zona Norte"
 			print_table($headers, calculo_norte, headers)
 
-			results_sur = ordenar_data(sur, [4, 5, 3])
+			results_sur = ordering(sur, 6)
 			puts "Guias despacho - Zona Sur"
 			calculo_sur = calculo_horas(results_sur)
 			print_table($headers, calculo_sur, headers)
+		when '5'
+			print 'Nombre del archivo?'
+			file_name = gets.chomp
+			puts
+			export_csv(file_name, $headers, $planilla)
+			export_csv_to_pdf(file_name)
+			puts 'Exportado!'
 		else
 			puts 'Salir!'
 			break

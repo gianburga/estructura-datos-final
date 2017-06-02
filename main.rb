@@ -297,30 +297,126 @@ def ordenar_data(data, columns)
 	return data_ordered
 end
 
-def export_csv(file_name, headers, data)
+def export_filename(extension)
+	print '¿Nombre del archivo?: '
+	file_name = gets.chomp
+	puts
+	return file_name + '.' + extension
+end
+
+def table_row_html(row, limit)
+	html = ''
+	for k in 0..limit - 1
+		html += '<td style="text-align: center">' + get_value(k, row[k]) + '</td>'
+	end
+	return html
+end
+
+def table_tbody_html(data, limit)
+	html = ''
+	for j in 0..data.size - 1
+		if j % 2 == 0
+			html += '<tr>'
+		else
+			html += '<tr style="background-color: #ddd">'
+		end
+		html += table_row_html(data[j], limit)
+	end
+	html += '</tr>'
+	return html
+end
+
+def table_html(title, headers, data, split)
+	html = '<html><title>' + title + '</title>'
+	html += '<body style="font-family: sans-serif, Arial, Helbetica">'
+	html += '<h1>Planilla de despacho</h1>'
+	html += '<h3>' + title + '</h3>'
+	html += '<table style="width: 100%" border="0" cellspacing="0" cellpadding="3">'
+	html += '<thead><tr style="background-color: #ccc">'
+	for i in 0..headers.size - 1
+		html += '<th>' + headers[i] + '</th>'
+	end
+	html += '</tr></thead>'
+
+	html += '<tbody>'
+	if split.size != 0
+		for s in 0..split.size - 1
+			html += '<tr style="background-color: #bbb">'
+			html += '<td colspan="' + headers.size.to_s + '">' + split[s] + '</td></tr>'
+			html += table_tbody_html(data, headers.size)
+		end
+	else
+		html += table_tbody_html(data, headers.size)
+	end
+	html += '<tr><td colspan="' + headers.size.to_s + '" style="text-align: center; background-color: #bbb">' + data.size.to_s + ' registros</td></tr>'
+	html += '</tbody>'
+	html += '</table>'
+	html += '</body>'
+	html += '</html>'
+end
+
+def export_csv(headers, data, split)
+	file_name = export_filename('csv')
+	puts 'Exportando ' + file_name + '...'
 	require "csv"
-	CSV.open(file_name + ".csv", "wb") do |csv|
+	CSV.open(file_name, "wb") do |csv|
 		csv << headers
 		for i in 0..data.size - 1
 			csv << data[i]
 		end
 	end
+	return file_name
 end
 
-def export_csv_to_pdf(file_name)
-	require "prawn"
-	Prawn::Document.generate(file_name + ".pdf") do
-	  text $planilla
-	end
+def export_csv_to_pdf(headers, data, split, title)
+	file_name = export_filename('pdf')
+	puts 'Exportando ' + file_name + '...'
+	require "pdfkit"
+	html = table_html(title, headers, data, split)
+	kit = PDFKit.new(html, :page_size => 'A4')
+	file = kit.to_file(file_name)
+	return file_name
 end
 
 def print_menu_items()
 	puts '1. Mostrar guias'
 	puts '2. Ingresar guia de despacho'
-	puts '3. Buscar guia'
-	puts '4. Operaciones de despacho'
-	puts '5. Exportar a excel'
+	puts '3. Buscar guia por codigo de cliente'
+	puts '4. Buscar guia de despacho'
+	puts '5. Operaciones de despacho'
 	puts '*. Salir'
+end
+
+def export_menu(results, title, split)
+	if results.size == 0
+		return
+	end
+	while true
+		puts 'Opciones: '
+		puts '1. Exportar a Excel (CSV)'
+		puts '2. Exportar a PDF'
+		puts '*. Salir'
+		print 'Selecciona una opción: '
+		option = gets.chomp
+		puts
+
+		case option
+		when '1'
+			file_name = export_csv($headers, results, split)
+			puts 'Archivo ' + file_name + ' exportado correctamente.'
+			break;
+		when '2'
+			file_name = export_csv_to_pdf($headers, results, split, title)
+			puts 'Archivo ' + file_name + ' exportado correctamente.'
+			break;
+		when '*'
+			puts 'Cancelar'
+			break
+		else
+			puts 'Opción inválida'
+		end
+	end
+	puts
 end
 
 def calculo_horas(data)
@@ -358,6 +454,7 @@ def show_menu()
 		case option
 		when '1'
 			print_table($headers, $planilla, [])
+			export_menu($planilla, 'Planilla de despacho', [])
 		when '2'
 			form_guia_despacho()
 		when '3'
@@ -366,31 +463,53 @@ def show_menu()
 			puts
 			results = buscar_guia_despacho(value, 1)
 			print_table($headers, results, [])
+			export_menu(results, 'Búsqueda para cliente: ' + value, [])
 		when '4'
-			puts 'Ordernar'
-			norte = buscar_guia_despacho('N', 2)
-			sur = buscar_guia_despacho('S', 2)
+			print 'Ingrese una guia de despacho a buscar: '
+			value = gets.chomp
+			puts
+			results = buscar_guia_despacho(value, 0)
+			print_table($headers, results, [])
+			export_menu(results, 'Búsqueda para guia de despacho: ' + value, [])
+		when '5'
+			puts 'Guias de despacho'
 			headers = ['Despachos para hoy', 'Despachos mañana', 'Despachos pendientes']
 
-			results_norte = ordering(norte, 6)
-			calculo_norte = calculo_horas(results_norte)
-			puts "Guias despacho - Zona Norte"
-			print_table($headers, calculo_norte, headers)
-
-			results_sur = ordering(sur, 6)
-			puts "Guias despacho - Zona Sur"
-			calculo_sur = calculo_horas(results_sur)
-			print_table($headers, calculo_sur, headers)
-		when '5'
-			print 'Nombre del archivo?'
-			file_name = gets.chomp
-			puts
-			export_csv(file_name, $headers, $planilla)
-			export_csv_to_pdf(file_name)
-			puts 'Exportado!'
-		else
+			while true
+				puts 'Zona'
+				puts '1. Zona Norte'
+				puts '2. Zona Sur'
+				puts '*. Cancelar'
+				print 'Seleccione Zona: '
+				zone = gets.chomp
+				puts
+				case zone 
+				when '1'
+					norte = buscar_guia_despacho('N', 2)
+					results_norte = ordering(norte, 6)
+					calculo_norte = calculo_horas(results_norte)
+					puts "Guias despacho - Zona Norte"
+					print_table($headers, calculo_norte, headers)	
+					export_menu(results_norte, 'Guias despacho - Zona Norte', headers)
+				when '2'
+					sur = buscar_guia_despacho('S', 2)
+					results_sur = ordering(sur, 6)
+					puts "Guias despacho - Zona Sur"
+					calculo_sur = calculo_horas(results_sur)
+					print_table($headers, calculo_sur, headers)
+					export_menu(results_sur, 'Guias despacho - Zona Sur', headers)
+				when '*'
+					puts 'Cancelado'
+					break
+				else
+					puts 'Opción inválida'
+				end
+			end
+		when '*'
 			puts 'Salir!'
 			break
+		else
+			puts 'Opción inválida'
 		end
 	end
 end
